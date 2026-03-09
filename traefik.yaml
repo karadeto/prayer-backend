@@ -1,0 +1,43 @@
+http:
+  routers:
+    prayerapi-backend-nokjbc-router-27:
+      rule: Host(`prayerapi-backend-nokjbc-d12677-91-98-238-27.traefik.me`)
+      service: prayerapi-backend-nokjbc-service-27
+      middlewares:
+        - redirect-to-https
+      entryPoints:
+        - web
+    prayerapi-backend-nokjbc-router-websecure-27:
+      rule: Host(`prayerapi-backend-nokjbc-d12677-91-98-238-27.traefik.me`)
+      service: prayerapi-backend-nokjbc-service-27
+      middlewares: []
+      entryPoints:
+        - websecure
+      tls:
+        certResolver: letsencrypt
+    prayerapi-backend-nokjbc-router-28:
+      rule: Host(`prayer-api.smk-digital.de`)
+      service: prayerapi-backend-nokjbc-service-28
+      middlewares:
+        - redirect-to-https
+      entryPoints:
+        - web
+    prayerapi-backend-nokjbc-router-websecure-28:
+      rule: Host(`prayer-api.smk-digital.de`)
+      service: prayerapi-backend-nokjbc-service-28
+      middlewares: []
+      entryPoints:
+        - websecure
+      tls:
+        certResolver: letsencrypt
+  services:
+    prayerapi-backend-nokjbc-service-27:
+      loadBalancer:
+        servers:
+          - url: http://prayerapi-backend-nokjbc:3000
+        passHostHeader: true
+    prayerapi-backend-nokjbc-service-28:
+      loadBalancer:
+        servers:
+          - url: http://prayerapi-backend-nokjbc:3000
+        passHostHeader: true
