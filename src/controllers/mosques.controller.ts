@@ -5,9 +5,17 @@ import {
   HttpStatus,
   Logger,
   Query,
+  Res,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
+import type { Response } from 'express';
+
+interface PlacePhoto {
+  photo_reference: string;
+  height: number;
+  width: number;
+}
 
 interface PlaceResult {
   place_id: string;
@@ -15,14 +23,20 @@ interface PlaceResult {
   vicinity?: string;
   formatted_address?: string;
   geometry: { location: { lat: number; lng: number } };
+  rating?: number;
+  user_ratings_total?: number;
+  photos?: PlacePhoto[];
 }
 
-interface NearbyMosqueDto {
+interface MosqueDto {
   place_id: string;
   name: string;
   address: string;
   latitude: number;
   longitude: number;
+  rating: number | null;
+  ratings_total: number | null;
+  photo_url: string | null;
 }
 
 @Controller('v1/mosques')
@@ -37,12 +51,71 @@ export class MosquesController {
       '';
   }
 
+  private toDto(place: PlaceResult): MosqueDto {
+    const photoRef = place.photos?.[0]?.photo_reference;
+    return {
+      place_id: place.place_id,
+      name: place.name,
+      address: place.vicinity ?? place.formatted_address ?? '',
+      latitude: place.geometry.location.lat,
+      longitude: place.geometry.location.lng,
+      rating: place.rating ?? null,
+      ratings_total: place.user_ratings_total ?? null,
+      photo_url: photoRef
+        ? `/v1/mosques/photo?ref=${encodeURIComponent(photoRef)}`
+        : null,
+    };
+  }
+
+  @Get('photo')
+  async photo(
+    @Query('ref') ref: string,
+    @Query('maxwidth') maxwidthStr?: string,
+    @Res() res?: Response,
+  ): Promise<void> {
+    if (!ref) {
+      throw new HttpException('ref is required', HttpStatus.BAD_REQUEST);
+    }
+    if (!this.apiKey) {
+      throw new HttpException(
+        'Google Places API key not configured',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+
+    const maxwidth = parseInt(maxwidthStr ?? '400', 10) || 400;
+
+    try {
+      const response = await axios.get(
+        'https://maps.googleapis.com/maps/api/place/photo',
+        {
+          params: {
+            photoreference: ref,
+            maxwidth,
+            key: this.apiKey,
+          },
+          responseType: 'stream',
+          timeout: 10000,
+        },
+      );
+
+      res!.set({
+        'Content-Type': response.headers['content-type'] ?? 'image/jpeg',
+        'Cache-Control': 'public, max-age=86400',
+      });
+      response.data.pipe(res!);
+    } catch (err) {
+      this.logger.error('Failed to proxy photo', err);
+      throw new HttpException('Failed to fetch photo', HttpStatus.BAD_GATEWAY);
+    }
+  }
+
   @Get('nearby')
   async nearby(
     @Query('lat') lat: string,
     @Query('lng') lng: string,
     @Query('radius') radiusStr?: string,
-  ): Promise<{ results: NearbyMosqueDto[] }> {
+  ): Promise<{ results: MosqueDto[] }> {
     const latNum = parseFloat(lat);
     const lngNum = parseFloat(lng);
 
@@ -95,16 +168,7 @@ export class MosquesController {
         );
       }
 
-      const results: NearbyMosqueDto[] = (data.results as PlaceResult[]).map(
-        (place) => ({
-          place_id: place.place_id,
-          name: place.name,
-          address: place.vicinity ?? place.formatted_address ?? '',
-          latitude: place.geometry.location.lat,
-          longitude: place.geometry.location.lng,
-        }),
-      );
-
+      const results = (data.results as PlaceResult[]).map((p) => this.toDto(p));
       return { results };
     } catch (err) {
       if (err instanceof HttpException) throw err;
@@ -121,7 +185,7 @@ export class MosquesController {
     @Query('q') q: string,
     @Query('lat') lat?: string,
     @Query('lng') lng?: string,
-  ): Promise<{ results: NearbyMosqueDto[] }> {
+  ): Promise<{ results: MosqueDto[] }> {
     if (!q || q.length < 2) {
       throw new HttpException(
         'q must be at least 2 characters',
@@ -164,16 +228,7 @@ export class MosquesController {
         );
       }
 
-      const results: NearbyMosqueDto[] = (data.results as PlaceResult[]).map(
-        (place) => ({
-          place_id: place.place_id,
-          name: place.name,
-          address: place.vicinity ?? place.formatted_address ?? '',
-          latitude: place.geometry.location.lat,
-          longitude: place.geometry.location.lng,
-        }),
-      );
-
+      const results = (data.results as PlaceResult[]).map((p) => this.toDto(p));
       return { results };
     } catch (err) {
       if (err instanceof HttpException) throw err;
