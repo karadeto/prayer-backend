@@ -15,6 +15,7 @@ import { PrayerTimeService } from './services/prayer-time.service';
 import { AdminController } from './controllers/admin.controller';
 import { HealthController } from './controllers/health.controller';
 import { LocationsController } from './controllers/locations.controller';
+import { MosquesController } from './controllers/mosques.controller';
 import { PrayerTimesController } from './controllers/prayer-times.controller';
 
 import { SchedulerTask } from './tasks/scheduler.task';
@@ -46,6 +47,7 @@ import { SchedulerTask } from './tasks/scheduler.task';
   controllers: [
     HealthController,
     LocationsController,
+    MosquesController,
     PrayerTimesController,
     AdminController,
   ],
