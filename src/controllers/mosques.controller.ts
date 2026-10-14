@@ -37,6 +37,17 @@ interface MosqueDto {
   rating: number | null;
   ratings_total: number | null;
   photo_url: string | null;
+  is_ditib: boolean;
+}
+
+/**
+ * Detects DITIB (Turkish-Islamic Union for Religious Affairs) mosques from a
+ * place name. Google Places names DITIB congregations with "DITIB" in the
+ * title (also written "D.I.T.I.B."), so we normalize out separators before
+ * matching.
+ */
+function isDitibMosque(name: string): boolean {
+  return name.toLowerCase().replace(/[.\-\s]/g, '').includes('ditib');
 }
 
 @Controller('v1/mosques')
@@ -64,6 +75,7 @@ export class MosquesController {
       photo_url: photoRef
         ? `/v1/mosques/photo?ref=${encodeURIComponent(photoRef)}`
         : null,
+      is_ditib: isDitibMosque(place.name),
     };
   }
 
@@ -115,6 +127,7 @@ export class MosquesController {
     @Query('lat') lat: string,
     @Query('lng') lng: string,
     @Query('radius') radiusStr?: string,
+    @Query('ditib_only') ditibOnlyStr?: string,
   ): Promise<{ results: MosqueDto[] }> {
     const latNum = parseFloat(lat);
     const lngNum = parseFloat(lng);
@@ -143,20 +156,33 @@ export class MosquesController {
       Math.max(parseInt(radiusStr ?? '5000', 10) || 5000, 500),
       50000,
     );
+    const ditibOnly = ditibOnlyStr === 'true' || ditibOnlyStr === '1';
 
     try {
-      const response = await axios.get(
-        'https://maps.googleapis.com/maps/api/place/nearbysearch/json',
-        {
-          params: {
-            location: `${latNum},${lngNum}`,
-            radius,
-            type: 'mosque',
-            key: this.apiKey,
-          },
-          timeout: 10000,
-        },
-      );
+      // For DITIB-only, a text search for "DITIB" around the location surfaces
+      // DITIB congregations that a generic nearby mosque search would miss.
+      const [endpoint, params] = ditibOnly
+        ? [
+            'https://maps.googleapis.com/maps/api/place/textsearch/json',
+            {
+              query: 'DITIB moschee',
+              location: `${latNum},${lngNum}`,
+              radius,
+              type: 'mosque',
+              key: this.apiKey,
+            },
+          ]
+        : [
+            'https://maps.googleapis.com/maps/api/place/nearbysearch/json',
+            {
+              location: `${latNum},${lngNum}`,
+              radius,
+              type: 'mosque',
+              key: this.apiKey,
+            },
+          ];
+
+      const response = await axios.get(endpoint, { params, timeout: 10000 });
 
       const data = response.data;
 
@@ -168,7 +194,11 @@ export class MosquesController {
         );
       }
 
-      const results = (data.results as PlaceResult[]).map((p) => this.toDto(p));
+      let results = (data.results as PlaceResult[]).map((p) => this.toDto(p));
+      if (ditibOnly) {
+        // The text search is fuzzy; keep only genuine DITIB matches.
+        results = results.filter((m) => m.is_ditib);
+      }
       return { results };
     } catch (err) {
       if (err instanceof HttpException) throw err;
