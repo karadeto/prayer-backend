@@ -47,6 +47,16 @@ export class NearestPrayerTimesResponseDto {
   cache_status!: 'hit' | 'miss' | 'miss_warmup_started';
 }
 
+export class MonthPrayerTimesResponseDto {
+  year!: number;
+  month!: number;
+  days_in_month!: number;
+  location!: LocationOutDto;
+  days!: PrayerTimesOutDto[];
+  /** `partial`/`miss_warmup_started`: some days are not stored yet. */
+  cache_status!: 'hit' | 'partial' | 'miss_warmup_started';
+}
+
 export class CrawlLocationsSummaryDto {
   discovered!: number;
   processed!: number;
